@@ -56,7 +56,18 @@ CONF
 ${userService.start("t3code")}`;
 
 // The token is short-lived, so it can be in the state of Alchemy and in the output of the deploy.
-const pair = `T3CODE_HOME="$HOME/.t3" t3 auth pairing create --ttl 1h --label tincto --base-url "$PUBLIC_URL" --json`;
+// On a new machine, the server makes its database at its first start. Until that is done,
+// `t3` refuses each command that reads the database, so the script tries again for one minute.
+const pair = `
+problem="$(mktemp)"
+trap 'rm -f "$problem"' EXIT
+for attempt in $(seq 1 30); do
+  T3CODE_HOME="$HOME/.t3" t3 auth pairing create --ttl 1h --label tincto --base-url "$PUBLIC_URL" --json 2> "$problem" && exit 0
+  grep -q ServerOwnsDatabaseError "$problem" || break
+  sleep 2
+done
+cat "$problem" >&2
+exit 1`;
 
 export class T3CodeError extends Data.TaggedError("T3CodeError")<{ message: string }> {}
 

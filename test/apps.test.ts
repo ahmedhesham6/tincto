@@ -283,6 +283,35 @@ scripted.test.provider("BbMachine delete removes the bb machine, and does nothin
   }),
 );
 
+test.provider("T3Code waits for a server that still makes its database, and then gives the pairing link", (stack) =>
+  Effect.gen(function* () {
+    // The first two pairing commands come before the server is ready.
+    machine.record(
+      "t3",
+      `case "$*" in *"pairing create"*)
+  echo x >> "$HOME/tries"
+  if [ "$(wc -l < "$HOME/tries")" -lt 3 ]; then echo "ServerOwnsDatabaseError: Another T3 Code process owns the database" >&2; exit 1; fi
+  echo '{"pairUrl":"https://box/pair#token=ABC123"}' ;;
+esac`,
+    );
+    machine.record("sleep");
+    const news = { sshDest: "box", version: "2.0.0", host: "100.1.2.3", port: 3999, publicUrl: "https://box" };
+    expect((yield* stack.deploy(T3Code("T3", news))).pairUrl).toBe("https://box/pair#token=ABC123");
+    expect(machine.calls().filter((call) => call === "sleep 2")).toHaveLength(2);
+  }),
+);
+
+test.provider("T3Code reports a different failure of the pairing command at once", (stack) =>
+  Effect.gen(function* () {
+    machine.record("t3", `case "$*" in *"pairing create"*) echo "AuthError: no access" >&2; exit 1 ;; esac`);
+    machine.record("sleep");
+    const news = { sshDest: "box", version: "2.0.0", host: "100.1.2.3", port: 3999, publicUrl: "https://box" };
+    const error = yield* Effect.flip(stack.deploy(T3Code("T3", news)));
+    expect(String(error)).toContain("AuthError: no access");
+    expect(machine.calls()).not.toContain("sleep 2");
+  }),
+);
+
 test.provider("T3Code fails with a clear message when t3 prints no pairing link", (stack) =>
   Effect.gen(function* () {
     machine.record("t3", "echo 'no server'");
