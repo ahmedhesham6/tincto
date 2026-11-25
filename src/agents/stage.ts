@@ -22,6 +22,8 @@ export interface Staged {
  */
 export const stageAgents = (config: Pick<AgentsConfig, "agents" | "home">, root: string, dir: string): Staged => {
   rmSync(dir, { recursive: true, force: true });
+  // A machine with no files and no custom skills has an empty tree.
+  mkdirSync(dir, { recursive: true });
   const entries = new Set<string>();
   const put = (entry: string, write: (target: string) => void) => {
     if (entries.has(entry)) return;

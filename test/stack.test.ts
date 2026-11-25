@@ -30,6 +30,7 @@ const machineFile = (machineName: string, stack: string) => {
     file,
     `import * as Alchemy from "alchemy";
 import * as Command from "alchemy/Command";
+import * as Output from "alchemy/Output";
 import * as Tincto from "tincto";
 import * as Effect from "effect/Effect";
 import { example, host } from "./example.ts";
@@ -59,10 +60,42 @@ const noTool = machineFile(
     yield* Tincto.T3Code("T3Code", { tools, tailnet });
   })`,
 );
+// A machine that a different tool manages, for example NixOS: the system has the tools and
+// joined the tailnet, and the files of the home directory come from that tool.
+const managed = machineFile(
+  `${name}-managed`,
+  `Effect.gen(function* () {
+    const tools: Tincto.Tools = {
+      base: host,
+      host,
+      versions: { "npm:skills": "latest", "npm:t3": "nightly", "npm:bb-app": "latest" },
+    };
+    const tailnet = yield* Tincto.Tailnet("Tailscale", { host, join: false });
+    yield* Tincto.Agents("Home", {
+      tools,
+      agents: {
+        claude: {
+          plugins: [{ name: "tools@example-tools", marketplace: "example/tools" }],
+          files: {},
+          skillsDir: ".claude/skills",
+          skills: [],
+        },
+      },
+      skills: { agents: ["claude-code"], sources: { "vercel-labs/skills": ["find-skills"] } },
+    });
+    const t3code = yield* Tincto.T3Code("T3Code", {
+      tools,
+      tailnet,
+      projects: [{ name: "alpha", path: "work/alpha", cloned: Output.literal("work/alpha") }],
+    });
+    yield* Tincto.BbMachine("BbMachine", { tools });
+    return { t3codePair: t3code.pairUrl };
+  })`,
+);
 afterAll(() => {
   machine.close();
-  for (const file of [full, small, noTool]) rmSync(file, { force: true });
-  for (const machineName of [name, `${name}-small`, `${name}-no-tool`]) {
+  for (const file of [full, small, noTool, managed]) rmSync(file, { force: true });
+  for (const machineName of [name, `${name}-small`, `${name}-no-tool`, `${name}-managed`]) {
     rmSync(join(root, ".alchemy/staging", machineName), { recursive: true, force: true });
     rmSync(join(root, ".alchemy/state", machineName), { recursive: true, force: true });
   }
@@ -75,7 +108,8 @@ const plain = (text: string) =>
     .replaceAll(name, "<name>")
     .replace(/--key tincto-\w+/, "--key tincto-<id>")
     // The user of the computer that runs the test.
-    .replace(/enable-linger \S+/, "enable-linger <user>");
+    .replace(/enable-linger \S+/, "enable-linger <user>")
+    .replace(/show-user \S+/, "show-user <user>");
 // The Alchemy CLI itself asks the local Git for the project. Those calls are not on the machine.
 const onMachine = () => machine.calls().filter((call) => !/^git (config|rev-)/.test(call));
 
@@ -192,4 +226,47 @@ test("a component without its tool stops the plan, before a command runs on the 
   expect(planned.code).not.toBe(0);
   expect(planned.output).toContain('T3Code needs the tool "npm:t3". Add it to the tools of Toolchain.');
   expect(onMachine().slice(before)).toEqual([]);
+}, 180_000);
+
+test("a machine that a different tool manages gets its components with no root and no Tailscale API key", async () => {
+  machine.record(
+    "tailscale",
+    `if [ "$1" = status ]; then echo '{"BackendState":"Running","Self":{"ID":"n1","DNSName":"box.tail1.ts.net.","TailscaleIPs":["100.1.2.3"]}}'; fi`,
+  );
+  machine.record(
+    "t3",
+    `mkdir -p "$HOME/.config/systemd/user"; touch "$HOME/.config/systemd/user/t3code.service"
+case "$*" in *"pairing create"*) echo '{"credential":"ABC123","pairUrl":"'"$9"'/pair#token=ABC123"}' ;; esac`,
+  );
+  machine.record(
+    "bb",
+    `case "$*" in *"--json"*) echo '{"id":"host_1","name":"box","lifecycle":{"phase":"active"}}' ;; esac`,
+  );
+  // The services of the user stay already, and sudo asks for a password, so a script cannot use it.
+  machine.record("loginctl", 'if [ "$1" = show-user ]; then echo yes; fi');
+  machine.record("sudo", "echo 'sudo: a password is required' >&2; exit 1");
+  machine.record("curl");
+  const before = onMachine().length;
+
+  const deployed = await alchemy("deploy", managed);
+  expect(deployed.output).not.toContain("ERROR");
+  expect(deployed.code).toBe(0);
+  expect(deployed.output).toContain("https://box.tail1.ts.net:9443/pair#token=ABC123");
+
+  const calls = onMachine().slice(before);
+  expect(calls.filter((call) => /^(sudo|curl|apt-get|dpkg|mise) /.test(call))).toEqual([]);
+  expect(calls).toContain("skills add vercel-labs/skills --global --yes --agent claude-code --skill find-skills");
+  expect(calls).toContain("claude plugin install tools@example-tools");
+  expect(calls).toContain(`t3 project add ${machine.home}/work/alpha --title alpha`);
+  expect(calls.some((call) => call.startsWith("bb machine create"))).toBe(true);
+
+  // Destroy leaves the device in the tailnet: the stack did not join it.
+  const destroyed = await alchemy("destroy", managed);
+  expect(destroyed.code).toBe(0);
+  expect(
+    onMachine()
+      .slice(before)
+      .filter((call) => /^(sudo|curl) /.test(call)),
+  ).toEqual([]);
+  machine.bin("sudo", 'exec "$@"');
 }, 180_000);

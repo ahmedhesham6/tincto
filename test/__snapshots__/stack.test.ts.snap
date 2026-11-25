@@ -20,6 +20,7 @@ exports[`a deploy runs each resource after the resources that it needs, and a se
   "git -c http.https://github.com/.extraheader=Authorization: Basic eC1hY2Nlc3MtdG9rZW46dG9rZW4tMTIz clone https://github.com/example/alpha.git ~/repos/alpha",
   "git -c http.https://github.com/.extraheader=Authorization: Basic eC1hY2Nlc3MtdG9rZW46dG9rZW4tMTIz clone https://github.com/example/beta.git ~/repos/beta",
   "loginctl enable-linger <user>",
+  "loginctl show-user <user> --property=Linger --value",
   "mise install",
   "mise prune",
   "mise reshim",

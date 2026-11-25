@@ -104,3 +104,29 @@ test.provider(
       expect(String(yield* Effect.flip(destroyWith("denied\n403")))).toContain("HTTP 403");
     }),
 );
+
+test.provider(
+  "TailscaleDevice with join off reads a device that is in the tailnet, and does not change or remove it",
+  (stack) =>
+    Effect.gen(function* () {
+      shell.script(() => running);
+      expect(yield* stack.deploy(TailscaleDevice("Device", { ...news, join: false }))).toEqual(attributes);
+      // One read, with no root: no install, no service start, no `tailscale set`, no API call.
+      expect(shell.calls).toHaveLength(1);
+      expect(shell.calls[0]?.stdin).toContain("tailscale status --json");
+      expect(shell.calls[0]?.stdin).not.toContain("sudo");
+
+      shell.script(() => running);
+      yield* stack.destroy();
+      expect(shell.calls).toEqual([]);
+    }),
+);
+
+test.provider("TailscaleDevice with join off fails when the machine is not in the tailnet", (stack) =>
+  Effect.gen(function* () {
+    shell.script(() => loggedOut);
+    const error = yield* Effect.flip(stack.deploy(TailscaleDevice("Device", { ...news, join: false })));
+    expect(String(error)).toContain("is not in the tailnet");
+    expect(shell.calls.some((call) => call.line.startsWith("curl "))).toBe(false);
+  }),
+);

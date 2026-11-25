@@ -100,6 +100,31 @@ const server = yield * Hetzner.Server("box", { serverType: "cx22", image: "ubunt
 const host: Tincto.Host = { sshDest: Output.interpolate`root@${server.ipv4}` };
 ```
 
+### A machine that a different tool manages
+
+On some machines a different tool owns the system: NixOS, or the setup of your
+company. That tool installs the tools and joins the tailnet, and `sudo` asks for
+a password, so a script cannot use it. Do not yield `Toolchain` there: give the
+tools that the machine has. `join: false` makes `Tailnet` read the device only.
+
+```ts
+const host = { sshDest: "me@my-server" };
+// The tools that the machine has already. The components only check the names.
+const tools: Tincto.Tools = { base: host, host, versions: { "npm:skills": "latest", "npm:t3": "nightly" } };
+const tailnet = yield * Tincto.Tailnet("Tailscale", { host, join: false });
+
+yield *
+  Tincto.Agents("Home", {
+    tools,
+    skills: { agents: ["claude-code"], sources: { "vercel-labs/skills": ["find-skills"] } },
+  });
+const t3code = yield * Tincto.T3Code("T3Code", { tools, tailnet });
+```
+
+These components need no root: `Agents`, `Repos`, `BbMachine`, and `T3Code` when
+the services of the user stay after logout already (`loginctl enable-linger`).
+`Toolchain` with apt packages or services, `Tailnet` with a join, and `Serve` need root.
+
 To share components between machines, export an Effect that yields them and returns
 what the other components need, and yield it in each machine file.
 
@@ -117,6 +142,7 @@ const host = yield * Tincto.ExeHost("Vm", { cpu: stage.startsWith("live") ? 4 : 
   The stack uses it to make a one-use auth key and to remove the device on destroy.
 - For `ExeHost`: run `ssh exe.dev` one time and complete the registration.
 - For a machine that exists: SSH with your key, and sudo, apt and systemd on the machine.
+  A machine with no apt, or where sudo asks for a password: see "A machine that a different tool manages".
 
 ## The components
 

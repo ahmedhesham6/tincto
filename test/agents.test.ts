@@ -58,6 +58,12 @@ plainTest(
   },
 );
 
+plainTest("stage of a machine with no files and no custom skills gives no entries", () => {
+  const staged = stageAgents({ agents: {}, home: {} }, root, join(machine.dir, "staging-empty"));
+  expect(staged.entries).toEqual([]);
+  expect(existsSync(staged.dir)).toBe(true);
+});
+
 plainTest("stage names the skill that the config lists but machine/skills/ does not have", () => {
   expect(() => stage(["missing"])).toThrow('names the skill "missing"');
 });

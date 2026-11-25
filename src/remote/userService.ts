@@ -9,7 +9,8 @@ import { toolPath } from "./Ssh.ts";
 const unitDir = `"$HOME/.config/systemd/user"`;
 
 /** The `Environment=PATH=` line of a unit or a drop-in. Use it in a heredoc that expands `$HOME`. */
-export const unitPath = `Environment=PATH=${toolPath}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`;
+// The last two directories are where NixOS has its programs. On other systems they are not there.
+export const unitPath = `Environment=PATH=${toolPath}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/run/wrappers/bin:/run/current-system/sw/bin`;
 
 /** Writes the unit file of a service that runs one command. */
 export const writeUnit = (name: string, description: string, command: string) => `
@@ -35,7 +36,10 @@ UNIT
 
 /** Starts a service, or starts it again, and makes it start at boot with no person logged in. */
 export const start = (name: string) => `
-sudo loginctl enable-linger "$(id -un)"
+# Root is necessary only when the services of the user do not stay yet.
+if [ "$(loginctl show-user "$(id -un)" --property=Linger --value 2>/dev/null)" != yes ]; then
+  sudo loginctl enable-linger "$(id -un)"
+fi
 systemctl --user daemon-reload
 systemctl --user enable ${name}
 systemctl --user restart ${name}

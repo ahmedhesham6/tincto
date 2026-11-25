@@ -17,6 +17,13 @@ export interface TailscaleDeviceProps {
   tags: string[];
   /** Let Tailscale SSH accept connections. */
   ssh: boolean;
+  /**
+   * `false`: the machine is in the tailnet already, because a person or the
+   * system of the machine joined it. The resource only reads the device. It
+   * needs no root and no API key, and it does not change or remove the device.
+   * @default true
+   */
+  join?: boolean;
 }
 
 export interface TailscaleDeviceAttributes {
@@ -75,8 +82,8 @@ if ! command -v tailscale >/dev/null 2>&1; then
   curl -fsSL https://tailscale.com/install.sh | sh >&2
 fi
 sudo systemctl enable --now tailscaled >&2
-tailscale status --json 2>/dev/null || echo '{"BackendState":"NoState"}'
 `;
+const read = `tailscale status --json 2>/dev/null || echo '{"BackendState":"NoState"}'\n`;
 
 const up = `
 key_file="$(mktemp)"
@@ -85,8 +92,8 @@ printf '%s' "$AUTH_KEY" > "$key_file"
 sudo tailscale up --auth-key="file:$key_file" --hostname="$NAME" --ssh="$SSH" --advertise-tags="$TAGS"
 `;
 
-const observe = (sshDest: string) =>
-  runScript(sshDest, status).pipe(
+const observe = (sshDest: string, script = status + read) =>
+  runScript(sshDest, script).pipe(
     Effect.map((result): TailscaleDeviceAttributes | undefined => {
       const json = JSON.parse(result.stdout) as {
         BackendState: string;
@@ -132,6 +139,15 @@ export const TailscaleDeviceProvider = provider(TailscaleDevice, {
   stables: ["nodeId"],
   diff: replaceOn<TailscaleDeviceProps>("sshDest"),
   reconcile: Effect.fn(function* ({ news }) {
+    if (news.join === false) {
+      const joined = yield* observe(news.sshDest, read);
+      if (!joined) {
+        return yield* new TailscaleError({
+          message: `${news.sshDest} is not in the tailnet. Join it on the machine with "tailscale up", or remove "join: false".`,
+        });
+      }
+      return joined;
+    }
     if (yield* observe(news.sshDest)) {
       // Sync the settings that can change on a connected device.
       yield* runScript(news.sshDest, `sudo tailscale set --hostname="$NAME" --ssh="$SSH"`, {
@@ -145,7 +161,9 @@ export const TailscaleDeviceProvider = provider(TailscaleDevice, {
     if (!device) return yield* new TailscaleError({ message: `${news.hostname} did not connect to the tailnet` });
     return device;
   }),
-  delete: Effect.fn(function* ({ output }) {
+  delete: Effect.fn(function* ({ olds, output }) {
+    // The stack did not join the device, so the stack does not remove it.
+    if (olds.join === false) return;
     const removed = yield* api("DELETE", `/device/${output.nodeId}`);
     if (removed.status !== 200 && removed.status !== 404) {
       return yield* new TailscaleError({
