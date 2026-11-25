@@ -24,8 +24,9 @@ case "$*" in *"pairing create"*) echo '{"credential":"ABC123","pairUrl":"'"$9"'/
 afterAll(machine.close);
 
 const { test } = Test.make({ providers: providers() });
-const start = (name: string) => [
-  `loginctl enable-linger ${process.env.USER}`,
+const start = (name: string, lingers = false) => [
+  `loginctl show-user ${process.env.USER} --property=Linger --value`,
+  ...(lingers ? [] : [`loginctl enable-linger ${process.env.USER}`]),
   "systemctl --user daemon-reload",
   `systemctl --user enable ${name}`,
   `systemctl --user restart ${name}`,
@@ -54,6 +55,21 @@ test.provider("T3Code installs the service, binds it to the given address, and s
     expect(machine.calls().slice(-2)).toEqual(stop("t3code"));
     expect(machine.has(".config/systemd/user/t3code.service")).toBe(false);
     expect(machine.has(".config/systemd/user/t3code.service.d")).toBe(false);
+  }),
+);
+
+test.provider("T3Code needs no root on a machine where the services of the user stay already", (stack) =>
+  Effect.gen(function* () {
+    machine.record("loginctl", 'if [ "$1" = show-user ]; then echo yes; fi');
+    // sudo asks for a password on this machine, so a script cannot use it.
+    machine.bin("sudo", "echo 'sudo: a password is required' >&2; exit 1");
+    const news = { sshDest: "box", version: "2.0.0", host: "100.1.2.3", port: 3999, publicUrl: "https://box:9443" };
+    yield* stack.deploy(T3Code("T3", news));
+    expect(machine.calls().slice(1, 5)).toEqual(start("t3code", true));
+    // The directories of NixOS are on the PATH of the unit.
+    expect(machine.read(".config/systemd/user/t3code.service.d/override.conf")).toContain(
+      ":/etc/profiles/per-user/%u/bin:/run/wrappers/bin:/run/current-system/sw/bin\n",
+    );
   }),
 );
 
