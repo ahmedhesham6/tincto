@@ -51,6 +51,7 @@ export default Alchemy.Stack(
 - The components: `ExeHost`, `Toolchain`, `Tailnet`, `Serve`, `Agents`, `Repos`, `T3Code`, `BbMachine`, `BbServer`.
 - Each component takes an ID first, then props. The props say what it needs: `host`, `tools` (from `Toolchain`) or `tailnet` (from `Tailnet`). The type checker names what is missing.
 - Each other value has a default. A machine has only the components that its stack yields.
+- `ExeHost` takes `sshKeys: { <person>: "<public key>" }`: each key opens this VM only, and the person connects with `ssh <name>.exe.xyz` with no exe.dev account. `T3Code` takes `telemetry: false` to stop its product usage data.
 - A component that needs a tool names it: `Agents` needs `npm:skills`, `T3Code` needs `npm:t3`, the bb components need `npm:bb-app`. Put the tool in `tools` of `Toolchain`.
 - One machine has one `Serve`. Give it the `serve` rule of each component that returns one.
 

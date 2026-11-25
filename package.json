@@ -1,6 +1,6 @@
 {
   "name": "tincto",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Components for Alchemy that set up a dev machine or a server: tools, tailnet, agents, repositories and apps.",
   "keywords": [
     "alchemy",

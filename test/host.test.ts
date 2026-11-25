@@ -3,6 +3,7 @@ import * as Test from "@alchemy.run/test/Bun";
 import { adopt, Unowned } from "alchemy/AdoptPolicy";
 import * as Effect from "effect/Effect";
 import { ExeVm, ExeVmProvider, exeVmNameProblem } from "../src/host/ExeVm.ts";
+import { ExeVmKey, publicKeyProblem } from "../src/host/ExeVmKey.ts";
 import { providers } from "../src/Providers.ts";
 import { lifecycle, scriptedShell } from "../src/testing.ts";
 
@@ -127,5 +128,74 @@ plainTest("exeVmNameProblem accepts the names that exe.dev accepts, and gives th
   for (const name of ["tincto-box", "abcde", "a1-b2-c3"]) expect(exeVmNameProblem(name)).toBeUndefined();
   for (const name of ["box", "Tincto-box", "1tincto", "tincto--box", "tincto-", "tincto_box", "a".repeat(53)]) {
     expect(exeVmNameProblem(name)).toContain("not a valid exe.dev VM name");
+  }
+});
+
+const publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBp7 rola@mac";
+
+/** An exe.dev account with the key of the owner, and the keys that `ssh-key add` gives it. */
+const account = () => {
+  const keys = [{ public_key: "ssh-rsa AAAAowner key-1", fingerprint: "SHA256:owner" }];
+  shell.script((line) => {
+    if (line.includes("ssh-key add")) keys.push({ public_key: publicKey, fingerprint: "SHA256:rola" });
+    if (line.includes("ssh-key remove")) keys.splice(1);
+    return JSON.stringify({ ssh_keys: keys });
+  });
+  return keys;
+};
+
+test.provider("ExeVmKey adds the key for one VM only, one time, and destroy removes it", (stack) =>
+  Effect.gen(function* () {
+    const keys = account();
+    const news = { vm: "box", publicKey };
+    expect(yield* stack.deploy(ExeVmKey("Key", news))).toEqual({ fingerprint: "SHA256:rola" });
+    expect(shell.lines()).toEqual([
+      "ssh exe.dev ssh-key list --json",
+      `ssh exe.dev ssh-key add --vm=box '${publicKey}'`,
+      "ssh exe.dev ssh-key list --json",
+    ]);
+
+    // The key is there already, so a second deploy adds nothing.
+    yield* stack.deploy(ExeVmKey("Key", news), { force: true });
+    expect(shell.lines().filter((line) => line.includes("ssh-key add"))).toHaveLength(1);
+
+    yield* stack.destroy();
+    expect(shell.lines().at(-1)).toBe("ssh exe.dev ssh-key remove SHA256:rola");
+    expect(keys).toHaveLength(1);
+  }),
+);
+
+test.provider("ExeVmKey does not take a key that the stack did not add, such as the key of the owner", (stack) =>
+  Effect.gen(function* () {
+    account();
+    const error = yield* Effect.flip(stack.deploy(ExeVmKey("Key", { vm: "box", publicKey: "ssh-rsa AAAAowner me" })));
+    expect(String(error)).toContain("is in your exe.dev account already");
+    expect(shell.lines()).toEqual(["ssh exe.dev ssh-key list --json"]);
+  }),
+);
+
+test.provider("ExeVmKey replaces the key when the VM or the public key changes", (stack) =>
+  Effect.gen(function* () {
+    account();
+    yield* stack.deploy(ExeVmKey("Key", { vm: "box", publicKey }));
+    const action = (news: ExeVmKey["Props"]) =>
+      stack.plan(ExeVmKey("Key", news)).pipe(Effect.map((plan) => plan.resources.Key?.action));
+    expect(yield* action({ vm: "other", publicKey })).toBe("replace");
+    expect(yield* action({ vm: "box", publicKey: "ssh-ed25519 AAAAother rola@mac" })).toBe("replace");
+  }),
+);
+
+plainTest("publicKeyProblem accepts one line of a .pub file, and refuses text that a shell reads", () => {
+  for (const key of [publicKey, "ssh-ed25519 AAAAC3Nz", "ssh-rsa AAAAB3Nz+/a== me@host.example"]) {
+    expect(publicKeyProblem(key)).toBeUndefined();
+  }
+  for (const key of [
+    "",
+    "AAAAC3Nz",
+    "ssh-ed25519 AAAA' ; rm box ; '",
+    "ssh-ed25519 AAAA\nssh-rsa BBBB",
+    "ssh-ed25519 AAAA two words",
+  ]) {
+    expect(publicKeyProblem(key)).toContain("is not a public key");
   }
 });

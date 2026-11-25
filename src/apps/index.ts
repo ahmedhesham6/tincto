@@ -42,6 +42,8 @@ export const T3Code = Effect.fn("Tincto.T3Code")(function* (
     /** HTTPS port in the tailnet. Default: 9443. */
     servePort?: number;
     projects?: Clone[];
+    /** `false` stops the product usage events and the relay traces of the server. Default: the default of T3 Code. */
+    telemetry?: boolean;
   },
 ) {
   const { host } = props.tools;
@@ -53,6 +55,8 @@ export const T3Code = Effect.fn("Tincto.T3Code")(function* (
     host: props.tailnet.device.ipv4,
     port,
     publicUrl: url,
+    // No key when there is no value: a machine from before this prop then has no change.
+    ...(props.telemetry === undefined ? {} : { telemetry: props.telemetry }),
   });
   for (const { name, path, cloned } of props.projects ?? []) {
     // After the service and the clone: T3 Code refuses a directory that is not there.
