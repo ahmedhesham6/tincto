@@ -21,6 +21,8 @@ export interface TailscaleDeviceProps {
    * `false`: the machine is in the tailnet already, because a person or the
    * system of the machine joined it. The resource only reads the device. It
    * needs no root and no API key, and it does not change or remove the device.
+   * A change of this value changes who has the device: after a deploy with
+   * `false`, destroy leaves the device; after a deploy with `true`, destroy removes it.
    * @default true
    */
   join?: boolean;
@@ -32,6 +34,11 @@ export interface TailscaleDeviceAttributes {
   /** MagicDNS name, for example `box.tail1234.ts.net`. */
   dnsName: string;
   ipv4: string;
+  /**
+   * `false`: the last deploy only read the device, so destroy leaves it. State
+   * from a version before this attribute has no value: the stack joined that device.
+   */
+  joined?: boolean;
 }
 
 /**
@@ -94,7 +101,7 @@ sudo tailscale up --auth-key="file:$key_file" --hostname="$NAME" --ssh="$SSH" --
 
 const observe = (sshDest: string, script = status + read) =>
   runScript(sshDest, script).pipe(
-    Effect.map((result): TailscaleDeviceAttributes | undefined => {
+    Effect.map((result): Omit<TailscaleDeviceAttributes, "joined"> | undefined => {
       const json = JSON.parse(result.stdout) as {
         BackendState: string;
         Self?: { ID: string; DNSName: string; TailscaleIPs?: string[] };
@@ -146,7 +153,7 @@ export const TailscaleDeviceProvider = provider(TailscaleDevice, {
           message: `${news.sshDest} is not in the tailnet. Join it on the machine with "tailscale up", or remove "join: false".`,
         });
       }
-      return joined;
+      return { ...joined, joined: false };
     }
     if (yield* observe(news.sshDest)) {
       // Sync the settings that can change on a connected device.
@@ -159,11 +166,12 @@ export const TailscaleDeviceProvider = provider(TailscaleDevice, {
     }
     const device = yield* observe(news.sshDest);
     if (!device) return yield* new TailscaleError({ message: `${news.hostname} did not connect to the tailnet` });
-    return device;
+    return { ...device, joined: true };
   }),
-  delete: Effect.fn(function* ({ olds, output }) {
-    // The stack did not join the device, so the stack does not remove it.
-    if (olds.join === false) return;
+  delete: Effect.fn(function* ({ output }) {
+    // The stack only read the device, so the stack does not remove it. The attribute
+    // tells, not the prop: a change of the prop that failed did nothing on the machine.
+    if (output.joined === false) return;
     const removed = yield* api("DELETE", `/device/${output.nodeId}`);
     if (removed.status !== 200 && removed.status !== 404) {
       return yield* new TailscaleError({

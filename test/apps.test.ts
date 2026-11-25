@@ -68,7 +68,7 @@ test.provider("T3Code needs no root on a machine where the services of the user 
     expect(machine.calls().slice(1, 5)).toEqual(start("t3code", true));
     // The directories of NixOS are on the PATH of the unit.
     expect(machine.read(".config/systemd/user/t3code.service.d/override.conf")).toContain(
-      ":/run/wrappers/bin:/run/current-system/sw/bin\n",
+      ":/etc/profiles/per-user/%u/bin:/run/wrappers/bin:/run/current-system/sw/bin\n",
     );
   }),
 );

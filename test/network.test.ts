@@ -11,7 +11,9 @@ const running = JSON.stringify({
   Self: { ID: "nABC", DNSName: "box.tail1.ts.net.", TailscaleIPs: ["100.1.2.3", "fd7a::1"] },
 });
 const loggedOut = JSON.stringify({ BackendState: "NeedsLogin" });
-const attributes = { nodeId: "nABC", dnsName: "box.tail1.ts.net", ipv4: "100.1.2.3" };
+const device = { nodeId: "nABC", dnsName: "box.tail1.ts.net", ipv4: "100.1.2.3" };
+// The stack joined the device or changed it, so the device is the stack's.
+const attributes = { ...device, joined: true };
 const news = { sshDest: "box.exe.xyz", hostname: "box", tags: ["tag:dev"], ssh: true };
 
 const shell = scriptedShell();
@@ -110,7 +112,10 @@ test.provider(
   (stack) =>
     Effect.gen(function* () {
       shell.script(() => running);
-      expect(yield* stack.deploy(TailscaleDevice("Device", { ...news, join: false }))).toEqual(attributes);
+      expect(yield* stack.deploy(TailscaleDevice("Device", { ...news, join: false }))).toEqual({
+        ...device,
+        joined: false,
+      });
       // One read, with no root: no install, no service start, no `tailscale set`, no API call.
       expect(shell.calls).toHaveLength(1);
       expect(shell.calls[0]?.stdin).toContain("tailscale status --json");
@@ -128,5 +133,27 @@ test.provider("TailscaleDevice with join off fails when the machine is not in th
     const error = yield* Effect.flip(stack.deploy(TailscaleDevice("Device", { ...news, join: false })));
     expect(String(error)).toContain("is not in the tailnet");
     expect(shell.calls.some((call) => call.line.startsWith("curl "))).toBe(false);
+  }),
+);
+
+test.provider("TailscaleDevice destroy goes by what the stack did, not by a change of join that failed", (stack) =>
+  Effect.gen(function* () {
+    // A person joined the device. A change to a join fails, so the stack never had the device.
+    shell.script(() => running);
+    yield* stack.deploy(TailscaleDevice("Device", { ...news, join: false }));
+    shell.script(() => ({ code: 1, stderr: "sudo: a password is required" }));
+    yield* Effect.flip(stack.deploy(TailscaleDevice("Device", news)));
+    shell.script(() => "\n200");
+    yield* stack.destroy();
+    expect(shell.calls.some((call) => call.line.startsWith("curl "))).toBe(false);
+
+    // The stack joined the device. A change to join off fails, so the device is still the stack's.
+    shell.script(() => running);
+    yield* stack.deploy(TailscaleDevice("Device", news));
+    shell.script(() => loggedOut);
+    yield* Effect.flip(stack.deploy(TailscaleDevice("Device", { ...news, join: false })));
+    shell.script(() => "\n200");
+    yield* stack.destroy();
+    expect(shell.calls[0]?.stdin).toContain("/api/v2/device/nABC");
   }),
 );

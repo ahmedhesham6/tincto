@@ -9,8 +9,9 @@ import { toolPath } from "./Ssh.ts";
 const unitDir = `"$HOME/.config/systemd/user"`;
 
 /** The `Environment=PATH=` line of a unit or a drop-in. Use it in a heredoc that expands `$HOME`. */
-// The last two directories are where NixOS has its programs. On other systems they are not there.
-export const unitPath = `Environment=PATH=${toolPath}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/run/wrappers/bin:/run/current-system/sw/bin`;
+// The last three directories are where NixOS has its programs: those of the user (systemd
+// puts the name of the user in place of %u) and those of the system. On other systems they are not there.
+export const unitPath = `Environment=PATH=${toolPath}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/etc/profiles/per-user/%u/bin:/run/wrappers/bin:/run/current-system/sw/bin`;
 
 /** Writes the unit file of a service that runs one command. */
 export const writeUnit = (name: string, description: string, command: string) => `
