@@ -16,6 +16,11 @@ export interface T3CodeProps {
   port: number;
   /** Address at which the T3 Code app reaches the server, for example the Tailscale Serve URL. */
   publicUrl: string;
+  /**
+   * `false` stops the product usage events and the relay traces of the server
+   * (`T3CODE_TELEMETRY_ENABLED=false`). With no value, T3 Code uses its own default.
+   */
+  telemetry?: boolean;
 }
 
 export interface T3CodeAttributes {
@@ -45,6 +50,7 @@ cat > "$dropin/override.conf" <<CONF
 [Service]
 Environment=T3CODE_HOST=$T3CODE_HOST
 Environment=T3CODE_PORT=$T3CODE_PORT
+$T3CODE_TELEMETRY
 ${userService.unitPath}
 CONF
 ${userService.start("t3code")}`;
@@ -56,7 +62,15 @@ export class T3CodeError extends Data.TaggedError("T3CodeError")<{ message: stri
 
 export const T3CodeProvider = provider(T3Code, {
   reconcile: Effect.fn(function* ({ news }) {
-    yield* runScript(news.sshDest, install, { T3CODE_HOST: news.host, T3CODE_PORT: String(news.port) });
+    yield* runScript(news.sshDest, install, {
+      T3CODE_HOST: news.host,
+      T3CODE_PORT: String(news.port),
+      // A line of the drop-in. A comment when the machine file gives no value.
+      T3CODE_TELEMETRY:
+        news.telemetry === undefined
+          ? "# Telemetry: the default of T3 Code."
+          : `Environment=T3CODE_TELEMETRY_ENABLED=${news.telemetry}`,
+    });
     const paired = yield* runScript(news.sshDest, pair, { PUBLIC_URL: news.publicUrl });
     const pairUrl = yield* Effect.try({
       try: () => (JSON.parse(paired.stdout.slice(paired.stdout.indexOf("{"))) as { pairUrl: string }).pairUrl,

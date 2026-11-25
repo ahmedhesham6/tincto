@@ -136,6 +136,15 @@ const { stage } = yield * Alchemy.Stack;
 const host = yield * Tincto.ExeHost("Vm", { cpu: stage.startsWith("live") ? 4 : 2 });
 ```
 
+To let a different person use an exe.dev VM, give their public key to `ExeHost`. The
+key opens this VM only, and the person needs no exe.dev account: they connect with
+`ssh <name>.exe.xyz`. To stop the product usage data of T3 Code, give `telemetry: false`:
+
+```ts
+const host = yield * Tincto.ExeHost("Vm", { sshKeys: { rola: "ssh-ed25519 AAAA… rola@laptop" } });
+const t3code = yield * Tincto.T3Code("T3Code", { tools, tailnet, telemetry: false });
+```
+
 ## What you need
 
 - For `Tailnet`: `TAILSCALE_API_KEY` in `.env`, a Tailscale API access token. tincto reads it with `effect/Config`.
@@ -148,13 +157,13 @@ const host = yield * Tincto.ExeHost("Vm", { cpu: stage.startsWith("live") ? 4 : 
 
 | Component   | Needs              | Returns                   | What it does                                                                                    |
 | ----------- | ------------------ | ------------------------- | ----------------------------------------------------------------------------------------------- |
-| `ExeHost`   |                    | a host                    | An exe.dev VM with the name of the stack.                                                       |
+| `ExeHost`   |                    | a host                    | An exe.dev VM with the name of the stack. `sshKeys` lets other persons connect to it.           |
 | `Toolchain` | `host`             | `tools`                   | apt packages, system services, and command-line tools through [mise](https://mise.jdx.dev).     |
 | `Tailnet`   | `host`             | `tailnet`                 | The machine as a device in your tailnet, with the name of the stack.                            |
 | `Serve`     | `tailnet`, `rules` |                           | The HTTPS ports of the machine in the tailnet. One for each machine.                            |
 | `Agents`    | `tools`            |                           | Instruction files of each agent, custom skills, skills from skill sources, plugins, home files. |
 | `Repos`     | `host`             | the clones                | Copies your GitHub login to the machine, and clones each repository one time.                   |
-| `T3Code`    | `tools`, `tailnet` | `url`, `pairUrl`, `serve` | The T3 Code server, with one project for each clone in `projects`.                              |
+| `T3Code`    | `tools`, `tailnet` | `url`, `pairUrl`, `serve` | The T3 Code server, with one project for each clone in `projects`. `telemetry: false` stops it. |
 | `BbMachine` | `tools`            | `hostId`                  | The machine joins a bb server on a different computer as a bb machine.                          |
 | `BbServer`  | `tools`, `tailnet` | `url`, `serve`            | A bb server on the machine, with its plugins.                                                   |
 

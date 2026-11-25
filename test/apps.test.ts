@@ -58,6 +58,20 @@ test.provider("T3Code installs the service, binds it to the given address, and s
   }),
 );
 
+test.provider("T3Code turns telemetry off only when the machine file says so", (stack) =>
+  Effect.gen(function* () {
+    const news = { sshDest: "box", version: "2.0.0", host: "100.1.2.3", port: 3999, publicUrl: "https://box:9443" };
+    const override = () => machine.read(".config/systemd/user/t3code.service.d/override.conf");
+    yield* stack.deploy(T3Code("T3", news));
+    expect(override()).not.toContain("T3CODE_TELEMETRY_ENABLED");
+
+    // The change starts the service again, so the server reads the new value.
+    yield* stack.deploy(T3Code("T3", { ...news, telemetry: false }));
+    expect(override()).toContain("Environment=T3CODE_PORT=3999\nEnvironment=T3CODE_TELEMETRY_ENABLED=false\n");
+    expect(machine.calls().filter((call) => call === "systemctl --user restart t3code")).toHaveLength(2);
+  }),
+);
+
 test.provider("T3Code needs no root on a machine where the services of the user stay already", (stack) =>
   Effect.gen(function* () {
     machine.record("loginctl", 'if [ "$1" = show-user ]; then echo yes; fi');

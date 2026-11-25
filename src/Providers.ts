@@ -12,6 +12,7 @@ import { T3Code, T3CodeProvider } from "./apps/T3Code.ts";
 import { T3Project, T3ProjectProvider } from "./apps/T3Project.ts";
 import { TailscaleServe, TailscaleServeProvider } from "./apps/TailscaleServe.ts";
 import { ExeVm, ExeVmProvider } from "./host/ExeVm.ts";
+import { ExeVmKey, ExeVmKeyProvider } from "./host/ExeVmKey.ts";
 import { TailscaleDevice, TailscaleDeviceProvider } from "./network/TailscaleDevice.ts";
 import { type Shell, ShellLive } from "./remote/Shell.ts";
 import { GitHubLogin, GitHubLoginProvider } from "./repos/GitHubLogin.ts";
@@ -26,6 +27,7 @@ export class Providers extends Provider.ProviderCollection<Providers>()("Tincto"
 /** Each resource with its provider. To add a resource, add one line here. */
 const all = [
   [ExeVm, ExeVmProvider],
+  [ExeVmKey, ExeVmKeyProvider],
   [TailscaleDevice, TailscaleDeviceProvider],
   [AptPackages, AptPackagesProvider],
   [SystemService, SystemServiceProvider],
