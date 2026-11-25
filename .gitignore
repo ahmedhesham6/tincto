@@ -1,0 +1,13 @@
+node_modules
+
+# Secrets and local settings
+.env
+
+# Alchemy state and the staged home directory
+.alchemy
+
+# Python caches in skills
+__pycache__
+
+# The machine file of the full deploy test
+**/machines/test-*.ts

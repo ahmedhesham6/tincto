@@ -1,0 +1,10 @@
+# tincto
+
+> tincto makes a dev machine or a server agree with one TypeScript file: the machine, its tools, its place in a Tailscale tailnet, coding agents with their skills, repositories and apps. It is components for Alchemy stacks (https://alchemy.run), written with Effect.
+
+Read these files as Markdown:
+
+- [README](https://raw.githubusercontent.com/ahmedhesham6/tincto/main/README.md): install, a machine as an Alchemy stack, the table of components, your own components and resources, tests.
+- [Agent skill](https://raw.githubusercontent.com/ahmedhesham6/tincto/main/skills/tincto/SKILL.md): the short rules and examples for a coding agent. Install it with `npx skills add ahmedhesham6/tincto`.
+- [Terms](https://raw.githubusercontent.com/ahmedhesham6/tincto/main/CONTEXT.md): the words that the project uses.
+- [Example machine](https://raw.githubusercontent.com/ahmedhesham6/tincto/main/test/project/machines/example.ts)
